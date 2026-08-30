@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <title>
+            html学習用
+        </title>
+        <meta charset="UTF-8">
+        <style>
+            p {
+                white-space: pre-line;
+            }
+
+            body {
+                    backgroun: #222;
+                    color: #f00;
+            }
+            .ad-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    padding: 8px;
+    box-sizing: border-box;
+    text-align: center;
+    z-index: 9999;
+}
+
+.ad-footer img {
+    max-width: 100%;
+    max-height: 100px;
+    width: auto;
+    height: auto;
+    cursor: pointer;
+}
+
+            .title {
+                background: #101010;
+                text-align: center;
+            }
+
+            .title h1 {
+                color: #00b0ff;
+                font-size: 48px;
+            }
+
+            .abyss {
+                color: White;
+                font-family: serif;
+                font-size: 40px;
+            }
+
+            .page {
+                width: 1280px;
+                height: 600px;
+                border: none;
+            }
+        </style>
+    </head>
+
+    <body>
+        <h1>h1</h1>
+        <h2>h2</h2>
+        <h3>h3</h3>
+        <h4>h4</h4>
+        <h5>h5</h5>
+        <h6>h6</h6>
+        <hr>
+        <p>p</p>
+        <strong>太字</strong>
+        <em>強調</em>
+        <mark>蛍光</mark>
+        <p>テキスト <small>※補足</small></p>
+        <del>削除</del>
+        <a href="https://google.com" target="_blank">
+            Google
+        </a>
+        <video src="JoJo's Bizarre Adventure _ All Openings Full _ 1-11.mp4" controls></video>
+        <img src="Screenshot 2026-08-23 15.58.00.png" alt="画像">
+        <br><br><br>
+        <hr>
+        <ul>
+
+            <li>りんご</li>
+
+            <li>みかん</li>
+
+            <li>バナナ</li>
+            
+        </ul>
+        <ol>
+            <li>HTMLを書く</li>
+            <li>CSSを書く</li>
+            <li>JSを書く</li>
+        </ol>
+        <header>
+            <h1>ヘッダー</h1>
+        </header>
+        <article>
+            <h2>TEST</h2>
+            <p>これはアーティクルです</p>
+        </article>
+        <footer>
+            <p>© 2026 Sample</p>
+        </footer>
+        <button>ボタン</button>
+        <hr>
+        <input type="text">
+        <input type="number">
+        <input type="password">
+        <input type="email">
+        <input type="checkbox">
+        <input type="radio">
+        <input type="file">
+        <input type="color">
+        <input type="range">
+        <textarea></textarea>
+        <select>
+            <option>りんご</option>
+            <option>みかん</option>
+            <option>バナナ</option>
+        </select>
+        <table>
+            <tr>
+                <th>名前</th>
+                <th>年齢</th>
+            </tr>
+            <tr>
+                <td>太郎</td>
+                <td>16</td>
+            </tr>
+        </table>
+        <form>
+            <input type="text">
+            <button type="submit">送信</button>
+        </form>
+        <dialog id="dialog">
+            <p>ゲームを終了しますか？</p>
+            <button onclick="dialog.close()">閉じる</button>
+        </dialog>
+        <script>
+            const dialog = document.getElementById("dialog");
+            
+            dialog.showModal();
+        </script>
+        <details>
+            <summary>サマリータグ</summary>
+            <p>これはdetailsタグ内にsummaryタグとpタグを並べたものです</p>
+        </details>
+        <blockquote>
+            これは引用タグです。
+        </blockquote>
+        <pre>
+            こんにちは
+            　　これは
+            　　　　　そのまま表示される
+        </pre>
+        <p><kbd>Ctrl</kbd> + <kbd>C</kbd> を押してください。</p>
+        <abbr title="HyperText Markup Language">
+            HTML
+        </abbr>
+        <time datetime="2026-08-28">
+            2026年8月28日
+        </time>
+        <hr>
+        <main>
+            <h1>mainタグのテストh1</h1>
+            <p>本文用p</p>
+            
+            <aside>
+                asideタグを用いたものです
+            </aside>
+        </main>
+        <address>
+            example@example.com
+        </address>
+        <fieldset>
+            <legend>プレイヤー情報(legendタグ)</legend>
+            
+            <label>
+                名前
+                <input type="text">
+            </label>
+            
+            <label>
+                年齢
+                <input type="number">
+            </label>
+        </fieldset>
+        <input list="characters">
+        
+        <datalist id="characters">
+            <option value="Langly">
+            <option value="Besti">
+            <option value="Rounay">
+        </datalist>
+        <p>Loading...</p>
+        <progress id="loading" value="40" max="100"></progress>
+        <meter value="80" min="0" max="100">
+            80
+        </meter>
+        <iframe
+            src="https://google.com"
+            width="800"
+            height="600">
+        </iframe>
+        <hr>
+        <center>こんにちは</center>
+        <hgroup>
+            <h1>ゲーム制作</h1>
+            <p>HTML / CSS / JavaScript</p>
+        </hgroup>
+        <search>
+            <form>
+                <input type="search">
+                <button>検索</button>
+            </form>
+        </search>
+        <select>
+            <optgroup label="果物">
+                <option>りんご</option>
+                <option>みかん</option>
+            </optgroup>
+            <optgroup label="野菜">
+                <option>にんじん</option>
+                <option>キャベツ</option>
+            </optgroup>
+        </select>
+        <div contenteditable="true">
+            この文章を編集できます。
+        </div>
+        <div class="pre" draggable="true">
+        <p> ,/￣/ﾞ＿＿/￣ヽ(`･ω･)　ﾛｰﾄﾞ <br>
+            L＿L/EE∥ﾞl二二l二l　　ﾛｰﾗｰだ<br>
+            ｢／・＼ﾓ∥_／￣＼三＼　　WRYYYY<br>
+            ｜･○･｜∥｜ﾆ㊥ﾆ｜三｜       <br>
+            ﾞ＼・／／￣＼＿／三／　　　　</p>
+        </div>
+        <p>
+            　　 ∧
+　|＼| ＼＿＿＿＿＿
+＿ヽ ＼　　　　 ＿ ＼
+＼_ ＼　　　＿ |ｍ| ｜
+＜　　　　 ((⌒)ﾋﾉ| /
+∠ノ ﾉ ／二)二二)二｜
+`ﾉﾉ ノ＠`＜　　　　 ＼
+((　 へ三＼`＜＿＿＿＿)
+ﾉﾉ|Ｖ ヽﾆ･>彳 ﾉﾆ･ﾌ｜(
+７|　　／￣　｜~＼/)ﾉ
+｜ヽ　｜　ヽﾆ丿　∥
+ﾉﾉﾉ｜ ｜　　　　 / ／二
+（( ＼　 ／二ヽ /|｜(／
+　|　 ＼　 ー　/リ~＼)
+／|ヽ ＼＼＿＿/ |＼＿＿
+　 ノ　 ＼　　　|　＼
+￣￣￣ヽ　ヽ　　ノ￣￣
+
+        </p>
+        <p>
+            　　　　　　　　　　　　　　　__., ,.....,　　　　　　　　;----; ,..., ,...,
+　　　　　　　　,,.. -‐ ' "/ /　//　/　　　　　　　/　　 .//_//_/
+　　　　　　 ; '"　　　　/ /　//_,,..'　 ＿,,.. -- ;　'──' ;─‐‐,
+　　　　　　/　　　 ,. ‐'　ﾞ二─ ; /￣　　　　 //￣￣//　　 //￣￣`''ｰ,
+　　　　　 /,.. - '", -;　/　　　//　,,.. -,　　 //＿＿//　　 /;'＝==　　 / , -‐─ -､
+　　　　　,. - ' "´　 / /　　　/;'＝‐'"´　　./＿,,.. -''"　　 //＿__　　 .// /ﾞ;.　/ヽ ヽ
+　　　　 /　　　　　/ /　　　//　_,,...,　　　//　　　　　　 / ;'￣￣　　/ l　V　/ ノ　 .i
+　　　　/　　　,,.. -' /　　　/;'＝ ‐''''　　 //　　　　_,,..／ /＿＿,,. -'"　ヽ- '"ヽ,,,...ノ
+　　　 /,. -''" ,,. - '　　　 //　　　　,,. -'" ' ,＝ ''''--, ;-;　._ ;-;_　　　　,-------,,---, , -､
+　　　　,,.. - '"　　　　　／/,,.. -‐ '　　　　､= ,..ｘ.., =,‐　‐// //　　　 / 二二　// / ;`' = ヽ
+　　; '"　　　　　　　, ‐'　　´　　　　　　　'二二￣コ/.//,/ /i l,‐､___ ;=======./　 ;ﾉ｀'　'=ﾞ
+　 /　　　　　　, ‐'"　　　　　　　　　　　/~｡~// / < ',/"'~lﾞl`ｿ;_ﾞ; ;'ﾞ/ 二二' // /./_ ﾟ　ﾟ_/
+　/　　　　, ‐'"　　　　　　　　　　　　 , '=＝',/ /,''ﾞ,., l,-'"／,ﾞ; o ;‐/　─‐ .// ;v, 'ﾞ,.-､ヽ
+../　　, ‐'"　　　　　　　　　　　　　　/. -─-､,/.'ﾞﾞ　 "‐'".`" '‐‐' '─── ' '‐' '"ﾞ　　 ｖ'
+/, ‐'"
+
+        </p>
+        
+        <hr>
+        
+        <br>
+        
+        <br>
+        <p>
+            Test HTML
+        </p>
+        <br>
+        
+        <br>
+        
+        <hr>
+
+        <footer>
+            
+            <h1>
+                yuu3232 presents
+            </h1>
+            
+            <p>
+                © 2026 Yuu3232. All Rights Reserved.
+            </p>
+
+            <style>
+                footer {
+                    background: #111;
+                    color: #555;
+                    text-align: center;
+                    padding: 20px;
+                }
+            </style>
+            
+        </footer>
+
+        <!-- <footer class="ad-footer">
+    <span class="ad-label">広告</span>
+
+    <a href="https://ad.games.dmm.com/dotabyss_c02/index.html?utm_content=110038&utm_source=Bance&utm_medium=display&utm_campaign=nml&bnc_clickid=7BgJCEQKYLJBZk6FyV0EJI" target="_blank" rel="noopener noreferrer">
+        <img src="ad.png" alt="広告">
+    </a>
+
+    <button class="ad-close" onclick="this.parentElement.remove()">
+        ×
+    </button>
+</footer> -->
+
+        <hr>
+        <br>
+        <br>
+        <br>
+        <br>
+        <br>
+        <div class="title">
+            <br>
+            <h2>
+                ― yuu3232 presents ―
+            </h2>
+            <h1>
+                Rhythmos Studio
+            </h1>
+            <br>
+            <h3>
+                ABYSS & EDEN
+            </h3>
+            <h1 class="abyss">
+                Rhythmos Abyss
+            </h1>
+        </div>
+
+        <iframe src="assets/音ゲー零式.html" class="page"></iframe><br>
+
+        <iframe src="assets/ブロック崩し.html" class="page"></iframe><br>
+
+        <iframe src="assets/ブロック・メイド・イン・ヘブン.html" class="page"></iframe><br>
+
+        <br>
+
+        <hr>
+
+        <h1>
+            ページ移動
+        </h1>
+
+        <a href="https://youtube.com" target="_blank">YouTubeはこちら</a>
+<br>
+        <a href="https://scratch.mit.edu" target="_blank">Scratchはこちら</a>
+<br>
+        <a href="https://github.com" target="_blank">Githubはこちら</a>
+<br>    
+    </body>
+    
+</html>

@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>N-Dimensional Viewer</title>
+
+    <style>
+
+        html,
+        body {
+
+            margin: 0;
+            padding: 0;
+
+            width: 100%;
+            height: 100%;
+
+            overflow: hidden;
+
+            background: #2A2A2A;
+        }
+
+        canvas {
+
+            display: block;
+
+            width: 100%;
+            height: 100%;
+        }
+
+        #fps,
+        #info {
+
+            position: fixed;
+
+            left: 10px;
+
+            color: white;
+
+            font-family:
+                monospace;
+
+            font-size: 14px;
+
+            pointer-events: none;
+
+            user-select: none;
+        }
+
+        #fps {
+
+            top: 10px;
+        }
+
+        #info {
+
+            top: 30px;
+        }
+
+        h1 {
+            background: White;
+        }
+    </style>
+
+</head>
+
+
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="fps">
+        FPS: --
+    </div>
+
+    <div id="info">
+        Loading...
+    </div>
+
+    <br>
+    <script>
+        "use strict";
+
+/*
+============================================================
+ N-DIMENSIONAL HYPERCUBE VIEWER - WebGPU VERSION
+============================================================
+
+ DIMENSIONS を変更するだけ:
+
+     const DIMENSIONS = 5;
+     const DIMENSIONS = 12;
+     const DIMENSIONS = 20;
+
+ GPU:
+   ・N次元頂点生成
+   ・N次元回転
+   ・N→3D投影
+   ・3D→2D投影
+   ・頂点描画
+   ・辺描画
+
+ CPU:
+   ・入力
+   ・時間
+   ・GPUバッファ更新
+   ・FPS表示
+
+============================================================
+*/
+
+
+// ============================================================
+// 設定
+// ============================================================
+
+const DIMENSIONS = 3;
+
+const MAX_DIMENSIONS = 20;
+
+let time = 0;
+
+// ============================================================
+// DOM
+// ============================================================
+
+const canvas =
+    document.getElementById("canvas");
+
+const fpsElement =
+    document.getElementById("fps");
+
+const infoElement =
+    document.getElementById("info");
+
+
+// ============================================================
+// Dimension Check
+// ============================================================
+
+if (
+    DIMENSIONS < 1 ||
+    DIMENSIONS > MAX_DIMENSIONS
+) {
+    throw new Error(
+        `DIMENSIONS must be between 1 and ${MAX_DIMENSIONS}`
+    );
+}
+
+
+// ============================================================
+// WebGPU Check
+// ============================================================
+
+if (!navigator.gpu) {
+
+    throw new Error(
+        "WebGPU is not supported by this browser."
+    );
+}
+
+
+// ============================================================
+// Canvas
+// ============================================================
+
+let width = 0;
+let height = 0;
+
+let pixelRatio = 1;
+
+
+function resizeCanvas() {
+
+    pixelRatio =
+        window.devicePixelRatio || 1;
+
+    width =
+        window.innerWidth;
+
+    height =
+        window.innerHeight;
+
+    canvas.width =
+        Math.max(
+            1,
+            Math.floor(
+                width * pixelRatio
+            )
+        );
+
+    canvas.height =
+        Math.max(
+            1,
+            Math.floor(
+                height * pixelRatio
+            )
+        );
+
+    canvas.style.width =
+        `${width}px`;
+
+    canvas.style.height =
+        `${height}px`;
+}
+
+
+window.addEventListener(
+    "resize",
+    resizeCanvas
+);
+
+
+resizeCanvas();
+
+
+// ============================================================
+// Hypercube Information
+// ============================================================
+
+const VERTEX_COUNT =
+    2 ** DIMENSIONS;
+
+const EDGE_COUNT =
+    DIMENSIONS *
+    2 ** (DIMENSIONS - 1);
+
+const ROTATION_COUNT =
+    DIMENSIONS *
+    (DIMENSIONS - 1) /
+    2;
+
+
+// ============================================================
+// Keyboard
+// ============================================================
+
+const keys = Object.create(null);
+
+
+window.addEventListener(
+    "keydown",
+    event => {
+
+        keys[event.key] = true;
+
+        if (
+            event.key === "ArrowUp" ||
+            event.key === "ArrowDown" ||
+            event.key === "ArrowLeft" ||
+            event.key === "ArrowRight"
+        ) {
+
+            event.preventDefault();
+        }
+
+        if (
+            event.key === "0"
+        ) {
+
+            zoom = 1.0;
+        }
+    }
+);
+
+
+window.addEventListener(
+    "keyup",
+    event => {
+
+        keys[event.key] = false;
+    }
+);
+
+
+// ============================================================
+// Camera
+// ============================================================
+
+let zoom = 1.0;
+
+const minZoom = 0.02;
+const maxZoom = 8.0;
+
+const zoomInSpeed = 1.025;
+const zoomOutSpeed = 1.025;
+
+let cameraYaw = 0;
+
+const cameraRotationSpeed = 0.003;
+
+
+// ============================================================
+// WebGPU Globals
+// ============================================================
+
+let adapter;
+let device;
+let context;
+let format;
+
+let pipeline;
+let uniformBuffer;
+
+let bindGroup;
+
+let vertexBuffer;
+let edgeBuffer;
+
+let depthTexture;
+let depthView;
+
+
+// ============================================================
+// Rotation Plane Data
+// ============================================================
+
+/*
+    各回転平面:
+
+    a
+    b
+    speed
+
+    GPUへ送る。
+*/
+
+const rotationPlanes = [];
+
+
+for (
+    let a = 0;
+    a < DIMENSIONS;
+    a++
+) {
+
+    for (
+        let b = a + 1;
+        b < DIMENSIONS;
+        b++
+    ) {
+
+        rotationPlanes.push({
+            a,
+            b,
+            speed:
+                0.25 +
+                Math.random() * 0.75
+        });
+    }
+}
+
+
+// ============================================================
+// Uniform Layout
+// ============================================================
+//
+// WGSL側:
+//
+//  time
+//  zoom
+//  cameraYaw
+//  aspect
+//  width
+//  height
+//  dimensions
+//
+// rotation data:
+//
+// a,b,speed
+//
+// ============================================================
+
+const MAX_ROTATIONS =
+    MAX_DIMENSIONS *
+    (MAX_DIMENSIONS - 1) /
+    2;
+
+
+// float配列として確保
+//
+// header:
+//  0 time
+//  1 zoom
+//  2 cameraYaw
+//  3 aspect
+//  4 width
+//  5 height
+//  6 dimensions
+//  7 rotationCount
+//
+// rotation:
+//  8 + i*4
+//  a
+//  b
+//  speed
+//  padding
+//
+
+const uniformFloatCount =
+    8 +
+    MAX_ROTATIONS * 4;
+
+let uniformData;
+
+
+// ============================================================
+// Edge Data
+// ============================================================
+//
+// GPUで頂点番号から辺を生成するため、
+// CPU側では「辺のaxis」だけを渡す。
+//
+// edge:
+//   baseVertex
+//   axis
+//
+// 例:
+//
+// base = 0
+// axis = 0
+//
+// 0 ↔ 1
+//
+// base = 2
+// axis = 0
+//
+// 2 ↔ 3
+//
+// ============================================================
+
+function generateEdgeData() {
+
+    const data =
+        new Uint32Array(
+            EDGE_COUNT * 2
+        );
+
+    let index = 0;
+
+    for (
+        let vertex = 0;
+        vertex < VERTEX_COUNT;
+        vertex++
+    ) {
+
+        for (
+            let axis = 0;
+            axis < DIMENSIONS;
+            axis++
+        ) {
+
+            const other =
+                vertex ^
+                (1 << axis);
+
+            if (
+                vertex < other
+            ) {
+
+                data[index++] =
+                    vertex;
+
+                data[index++] =
+                    axis;
+            }
+        }
+    }
+
+    return data;
+}
+
+
+// ============================================================
+// Vertex Data
+// ============================================================
+//
+// GPU側でvertex_indexからN次元座標を復元するため、
+// 実際には頂点バッファを使わなくてもよい。
+//
+// WebGPUではvertex_indexを利用する。
+//
+// ただしEdge側ではinstance_indexを使う。
+//
+// ============================================================
+
+
+// ============================================================
+// Shader
+// ============================================================
+
+const shaderCode = /* wgsl */`
+
+struct Uniforms {
+
+    time : f32,
+    zoom : f32,
+    cameraYaw : f32,
+    aspect : f32,
+
+    width : f32,
+    height : f32,
+
+    dimensions : f32,
+    rotationCount : f32,
+
+    rotations : array<vec4<f32>, ${MAX_ROTATIONS}>
+};
+
+
+@group(0)
+@binding(0)
+var<uniform> u : Uniforms;
+
+
+// ========================================================
+// N-dimensional point
+// ========================================================
+
+fn getCoordinate(
+    vertexIndex : u32,
+    axis : u32
+) -> f32 {
+
+    let bit =
+        (vertexIndex >> axis) & 1u;
+
+    if (bit == 0u) {
+        return -1.0;
+    }
+
+    return 1.0;
+}
+
+
+// ========================================================
+// Rotation
+// ========================================================
+
+fn rotatePoint(
+    p : ptr<function, array<f32, ${MAX_DIMENSIONS}>>,
+    a : u32,
+    b : u32,
+    angle : f32
+) {
+
+    let c =
+        cos(angle);
+
+    let s =
+        sin(angle);
+
+    let x =
+        (*p)[a];
+
+    let y =
+        (*p)[b];
+
+    (*p)[a] =
+        x * c -
+        y * s;
+
+    (*p)[b] =
+        x * s +
+        y * c;
+}
+
+
+// ========================================================
+// N-dimensional projection
+// ========================================================
+
+fn projectN(
+    p : ptr<function, array<f32, ${MAX_DIMENSIONS}>>
+) -> vec3<f32> {
+
+    var dimensions =
+        u32(u.dimensions);
+
+    /*
+        N → 3
+
+        最後の軸から順番に落とす。
+
+        ただしGPU上では
+        完全なN-1ベクトルを作らず、
+        最終的に必要な3座標だけを保持する。
+    */
+
+    var coords =
+        array<f32, ${MAX_DIMENSIONS}>();
+
+
+    for (
+        var i : u32 = 0u;
+        i < dimensions;
+        i++
+    ) {
+
+        coords[i] =
+            (*p)[i];
+    }
+
+
+    /*
+        projection
+
+        N → N-1 → ... → 3
+    */
+
+    var currentDim =
+        dimensions;
+
+
+    while (
+        currentDim > 3u
+    ) {
+
+        let depthIndex =
+            currentDim - 1u;
+
+        var depth =
+            coords[depthIndex];
+
+
+        var denominator =
+            5.0 - depth;
+
+
+        if (
+            abs(denominator) < 0.001
+        ) {
+
+            if (
+                denominator >= 0.0
+            ) {
+
+                denominator =
+                    0.001;
+
+            } else {
+
+                denominator =
+                    -0.001;
+            }
+        }
+
+
+        let scale =
+            5.0 /
+            denominator;
+
+
+        for (
+            var i : u32 = 0u;
+            i < currentDim - 1u;
+            i++
+        ) {
+
+            coords[i] *=
+                scale;
+        }
+
+
+        currentDim--;
+    }
+
+
+    return vec3<f32>(
+        coords[0],
+        coords[1],
+        coords[2]
+    );
+}
+
+
+// ========================================================
+// Full transform
+// ========================================================
+
+fn transformPoint(
+    vertexIndex : u32
+) -> vec3<f32> {
+
+    var p =
+        array<f32, ${MAX_DIMENSIONS}>();
+
+
+    /*
+        Generate N-dimensional vertex
+    */
+
+    for (
+        var axis : u32 = 0u;
+        axis < u32(u.dimensions);
+        axis++
+    ) {
+
+        p[axis] =
+            getCoordinate(
+                vertexIndex,
+                axis
+            );
+    }
+
+
+    /*
+        Automatic N-dimensional rotation
+    */
+
+    for (
+        var r : u32 = 0u;
+        r < u32(u.rotationCount);
+        r++
+    ) {
+
+        let rotation =
+            u.rotations[r];
+
+        let a =
+            u32(rotation.x);
+
+        let b =
+            u32(rotation.y);
+
+        let speed =
+            rotation.z;
+
+        let angle =
+            u.time *
+            0.00045 *
+            speed;
+
+        rotatePoint(
+            &p,
+            a,
+            b,
+            angle
+        );
+    }
+
+
+    /*
+        Camera yaw
+
+        XZ plane
+    */
+
+    if (
+        u.dimensions >= 3.0
+    ) {
+
+        rotatePoint(
+            &p,
+            0u,
+            2u,
+            u.cameraYaw
+        );
+    }
+
+
+    return projectN(
+        &p
+    );
+}
+
+
+// ========================================================
+// Vertex Shader
+// ========================================================
+
+struct VertexOutput {
+
+    @builtin(position)
+    position : vec4<f32>,
+
+    @location(0)
+    depth : f32
+};
+
+
+@vertex
+fn vertexMain(
+    @builtin(vertex_index)
+    vertexIndex : u32
+) -> VertexOutput {
+
+    let p =
+        transformPoint(
+            vertexIndex
+        );
+
+
+    let scale =
+        min(
+            u.width,
+            u.height
+        )
+        *
+        0.22
+        *
+        u.zoom;
+
+
+    /*
+        Convert pixel-ish coordinates
+        to NDC.
+    */
+
+    let x =
+        p.x *
+        scale /
+        (u.width * 0.5);
+
+    let y =
+        p.y *
+        scale /
+        (u.height * 0.5);
+
+
+    var output : VertexOutput;
+
+
+    output.position =
+        vec4<f32>(
+            x,
+            -y,
+            0.5,
+            1.0
+        );
+
+
+    output.depth =
+        p.z;
+
+
+    return output;
+}
+
+
+// ========================================================
+// Vertex Fragment
+// ========================================================
+
+@fragment
+fn vertexFragment(
+    input : VertexOutput
+) -> @location(0) vec4<f32> {
+
+    let alpha =
+        clamp(
+            0.45 -
+            input.depth * 0.06,
+            0.08,
+            0.85
+        );
+
+
+    return vec4<f32>(
+        1.0,
+        1.0,
+        1.0,
+        0.9
+    );
+}
+
+
+// ========================================================
+// Edge Shader
+// ========================================================
+//
+// 各edge instanceにつき2頂点。
+//
+// instance_index:
+//   0 ... EDGE_COUNT-1
+//
+// vertex_index:
+//   0 or 1
+//
+// ========================================================
+
+struct EdgeOutput {
+
+    @builtin(position)
+    position : vec4<f32>,
+
+    @location(0)
+    depth : f32
+};
+
+
+@vertex
+fn edgeVertexMain(
+    @builtin(vertex_index)
+    vertexIndex : u32,
+
+    @builtin(instance_index)
+    instanceIndex : u32
+) -> EdgeOutput {
+
+    /*
+        edge indexから
+        base vertexとaxisを再計算する。
+
+        edge番号を
+
+            q = edgeIndex / dimensions
+            axis = edgeIndex % dimensions
+
+        とする。
+
+        qは
+        axis方向のbitが0である頂点を
+        lexicographicに並べたもの。
+    */
+
+    let axis =
+        instanceIndex %
+        u32(u.dimensions);
+
+
+    let q =
+        instanceIndex /
+        u32(u.dimensions);
+
+
+    /*
+        qを使って
+        axis bitを飛ばしたvertex indexを復元する。
+    */
+
+    var base : u32 = 0u;
+
+    var sourceBit : u32 = 0u;
+
+    var targetBit : u32 = 0u;
+
+
+    for (
+        var d : u32 = 0u;
+        d < u32(u.dimensions);
+        d++
+    ) {
+
+        if (d == axis) {
+            continue;
+        }
+
+
+        if (
+            (q & (1u << sourceBit)) != 0u
+        ) {
+
+            base |=
+                1u << d;
+        }
+
+
+        sourceBit++;
+    }
+
+
+    targetBit =
+        base |
+        (1u << axis);
+
+
+    var vertex =
+        base;
+
+
+    if (
+        vertexIndex == 1u
+    ) {
+
+        vertex =
+            targetBit;
+    }
+
+
+    let p =
+        transformPoint(
+            vertex
+        );
+
+
+    let scale =
+        min(
+            u.width,
+            u.height
+        )
+        *
+        0.22
+        *
+        u.zoom;
+
+
+    let x =
+        p.x *
+        scale /
+        (u.width * 0.5);
+
+    let y =
+        p.y *
+        scale /
+        (u.height * 0.5);
+
+
+    var output : EdgeOutput;
+
+
+    output.position =
+        vec4<f32>(
+            x,
+            -y,
+            0.5,
+            1.0
+        );
+
+
+    output.depth =
+        p.z;
+
+
+    return output;
+}
+
+
+@fragment
+fn edgeFragment(
+    input : EdgeOutput
+) -> @location(0) vec4<f32> {
+
+    let alpha =
+        clamp(
+            0.45 -
+            input.depth * 0.06,
+            0.08,
+            0.85
+        );
+
+
+    return vec4<f32>(
+        20.0 / 255.0,
+        180.0 / 255.0,
+        200.0 / 255.0,
+        alpha
+    );
+}
+
+`;
+
+
+// ============================================================
+// WebGPU Initialization
+// ============================================================
+
+async function initWebGPU() {
+
+    adapter =
+        await navigator.gpu.requestAdapter({
+            powerPreference:
+                "high-performance"
+        });
+
+
+    if (!adapter) {
+
+        throw new Error(
+            "No WebGPU adapter found."
+        );
+    }
+
+
+    device =
+        await adapter.requestDevice();
+
+
+    context =
+        canvas.getContext(
+            "webgpu"
+        );
+
+
+    format =
+        navigator.gpu.getPreferredCanvasFormat();
+
+
+    context.configure({
+
+        device,
+
+        format,
+
+        alphaMode:
+            "opaque"
+    });
+
+
+    // ========================================================
+    // Uniform Buffer
+    // ========================================================
+
+    uniformBuffer =
+        device.createBuffer({
+
+            size:
+                uniformFloatCount *
+                4,
+
+            usage:
+                GPUBufferUsage.UNIFORM |
+                GPUBufferUsage.COPY_DST
+        });
+
+
+    // ========================================================
+    // Bind Group Layout
+    // ========================================================
+
+    const bindGroupLayout =
+        device.createBindGroupLayout({
+
+            entries: [
+
+                {
+                    binding: 0,
+
+                    visibility:
+                        GPUShaderStage.VERTEX |
+                        GPUShaderStage.FRAGMENT,
+
+                    buffer: {
+                        type:
+                            "uniform"
+                    }
+                }
+
+            ]
+        });
+
+
+    bindGroup =
+        device.createBindGroup({
+
+            layout:
+                bindGroupLayout,
+
+            entries: [
+
+                {
+                    binding: 0,
+
+                    resource: {
+
+                        buffer:
+                            uniformBuffer
+                    }
+                }
+
+            ]
+        });
+
+
+    // ========================================================
+    // Shader Module
+    // ========================================================
+
+    const shaderModule =
+        device.createShaderModule({
+
+            code:
+                shaderCode
+        });
+
+
+    // ========================================================
+    // Pipeline
+    // ========================================================
+
+    const pipelineLayout =
+        device.createPipelineLayout({
+
+            bindGroupLayouts: [
+                bindGroupLayout
+            ]
+        });
+
+
+    pipeline =
+        device.createRenderPipeline({
+
+            layout:
+                pipelineLayout,
+
+
+            vertex: {
+
+                module:
+                    shaderModule,
+
+                entryPoint:
+                    "vertexMain"
+            },
+
+
+            fragment: {
+
+                module:
+                    shaderModule,
+
+                entryPoint:
+                    "edgeFragment",
+
+                targets: [
+
+                    {
+                        format,
+
+                        blend: {
+
+                            color: {
+
+                                srcFactor:
+                                    "src-alpha",
+
+                                dstFactor:
+                                    "one-minus-src-alpha",
+
+                                operation:
+                                    "add"
+                            },
+
+                            alpha: {
+
+                                srcFactor:
+                                    "one",
+
+                                dstFactor:
+                                    "one-minus-src-alpha",
+
+                                operation:
+                                    "add"
+                            }
+                        }
+                    }
+
+                ]
+            },
+
+
+            primitive: {
+
+                topology:
+                    "point-list",
+
+                stripIndexFormat:
+                    undefined,
+
+                frontFace:
+                    "ccw",
+
+                cullMode:
+                    "none"
+            }
+        });
+
+
+    // ========================================================
+    // Edge Pipeline
+    // ========================================================
+
+    edgePipeline =
+        device.createRenderPipeline({
+
+            layout:
+                pipelineLayout,
+
+
+            vertex: {
+
+                module:
+                    shaderModule,
+
+                entryPoint:
+                    "edgeVertexMain"
+            },
+
+
+            fragment: {
+
+                module:
+                    shaderModule,
+
+                entryPoint:
+                    "edgeFragment",
+
+                targets: [
+
+                    {
+                        format,
+
+                        blend: {
+
+                            color: {
+
+                                srcFactor:
+                                    "src-alpha",
+
+                                dstFactor:
+                                    "one-minus-src-alpha",
+
+                                operation:
+                                    "add"
+                            },
+
+                            alpha: {
+
+                                srcFactor:
+                                    "one",
+
+                                dstFactor:
+                                    "one-minus-src-alpha",
+
+                                operation:
+                                    "add"
+                            }
+                        }
+                    }
+
+                ]
+            },
+
+
+            primitive: {
+
+                topology:
+                    "line-list",
+
+                stripIndexFormat:
+                    undefined,
+
+                frontFace:
+                    "ccw",
+
+                cullMode:
+                    "none"
+            }
+        });
+}
+
+
+// ============================================================
+// Background
+// ============================================================
+
+let edgePipeline;
+
+
+// ============================================================
+// Uniform Update
+// ============================================================
+
+function updateUniforms() {
+
+    uniformData =
+        new Float32Array(
+            uniformFloatCount
+        );
+
+
+    uniformData[0] =
+        time;
+
+    uniformData[1] =
+        zoom;
+
+    uniformData[2] =
+        cameraYaw;
+
+    uniformData[3] =
+        width /
+        Math.max(
+            height,
+            1
+        );
+
+    uniformData[4] =
+        width;
+
+    uniformData[5] =
+        height;
+
+    uniformData[6] =
+        DIMENSIONS;
+
+    uniformData[7] =
+        ROTATION_COUNT;
+
+
+    for (
+        let i = 0;
+        i < rotationPlanes.length;
+        i++
+    ) {
+
+        const offset =
+            8 +
+            i * 4;
+
+        const plane =
+            rotationPlanes[i];
+
+
+        uniformData[offset] =
+            plane.a;
+
+        uniformData[offset + 1] =
+            plane.b;
+
+        uniformData[offset + 2] =
+            plane.speed;
+
+        uniformData[offset + 3] =
+            0;
+    }
+
+
+    device.queue.writeBuffer(
+
+        uniformBuffer,
+
+        0,
+
+        uniformData
+    );
+}
+
+
+// ============================================================
+// GPU Render
+// ============================================================
+
+function renderGPU() {
+
+    updateUniforms();
+
+
+    const commandEncoder =
+        device.createCommandEncoder();
+
+
+    const textureView =
+        context
+            .getCurrentTexture()
+            .createView();
+
+
+    const renderPass =
+        commandEncoder.beginRenderPass({
+
+            colorAttachments: [
+
+                {
+
+                    view:
+                        textureView,
+
+                    clearValue: {
+
+                        r:
+                            0.0196,
+
+                        g:
+                            0.0196,
+
+                        b:
+                            0.035,
+
+                        a:
+                            1
+                    },
+
+                    loadOp:
+                        "clear",
+
+                    storeOp:
+                        "store"
+                }
+
+            ]
+        });
+
+
+    renderPass.setBindGroup(
+        0,
+        bindGroup
+    );
+
+
+    // ========================================================
+    // Edges
+    // ========================================================
+
+    renderPass.setPipeline(
+        edgePipeline
+    );
+
+
+    /*
+        line-listなので、
+
+        vertex 0 → vertex 1
+
+        という2頂点で1本の線になる。
+
+        instanceごとに1 edge。
+    */
+
+    renderPass.draw(
+        2,
+        EDGE_COUNT
+    );
+
+
+    // ========================================================
+    // Vertices
+    // ========================================================
+
+    renderPass.setPipeline(
+        pipeline
+    );
+
+
+    renderPass.draw(
+        VERTEX_COUNT
+    );
+
+
+    renderPass.end();
+
+
+    device.queue.submit([
+        commandEncoder.finish()
+    ]);
+}
+
+
+// ============================================================
+// Update
+// ============================================================
+
+function update(
+    deltaTime
+) {
+
+    time +=
+        deltaTime;
+
+
+    // ========================================================
+    // Zoom
+    // ========================================================
+
+    if (
+        keys["ArrowUp"]
+    ) {
+
+        zoom *=
+            Math.pow(
+                zoomInSpeed,
+                deltaTime / 16.67
+            );
+    }
+
+
+    if (
+        keys["ArrowDown"]
+    ) {
+
+        zoom /=
+            Math.pow(
+                zoomOutSpeed,
+                deltaTime / 16.67
+            );
+    }
+
+
+    zoom =
+        Math.max(
+            minZoom,
+            Math.min(
+                maxZoom,
+                zoom
+            )
+        );
+
+
+    // ========================================================
+    // Camera
+    // ========================================================
+
+    if (
+        keys["ArrowLeft"]
+    ) {
+
+        cameraYaw -=
+            cameraRotationSpeed *
+            deltaTime;
+    }
+
+
+    if (
+        keys["ArrowRight"]
+    ) {
+
+        cameraYaw +=
+            cameraRotationSpeed *
+            deltaTime;
+    }
+}
+
+
+// ============================================================
+// Information
+// ============================================================
+
+function updateInfo() {
+
+    if (!infoElement) {
+        return;
+    }
+
+
+    infoElement.textContent =
+
+        `${DIMENSIONS}D | ` +
+        `Vertices: ${VERTEX_COUNT.toLocaleString()} | ` +
+        `Edges: ${EDGE_COUNT.toLocaleString()} | ` +
+        `Rotations: ${ROTATION_COUNT}`;
+}
+
+
+// ============================================================
+// FPS
+// ============================================================
+
+let lastTime =
+    performance.now();
+
+let fpsTime =
+    lastTime;
+
+let frameCount =
+    0;
+
+
+// ============================================================
+// Main Loop
+// ============================================================
+
+function loop(now) {
+
+    const deltaTime =
+        Math.min(
+            now - lastTime,
+            100
+        );
+
+
+    lastTime =
+        now;
+
+
+    update(
+        deltaTime
+    );
+
+
+    renderGPU();
+
+
+    // ========================================================
+    // FPS
+    // ========================================================
+
+    frameCount++;
+
+
+    if (
+        now - fpsTime >= 500
+    ) {
+
+        const fps =
+            frameCount /
+            (
+                (now - fpsTime) /
+                1000
+            );
+
+
+        if (fpsElement) {
+
+            fpsElement.textContent =
+                `FPS: ${fps.toFixed(0)}`;
+        }
+
+
+        frameCount =
+            0;
+
+        fpsTime =
+            now;
+    }
+
+
+    requestAnimationFrame(
+        loop
+    );
+}
+
+
+// ============================================================
+// Start
+// ============================================================
+
+async function main() {
+
+    updateInfo();
+
+
+    await initWebGPU();
+
+
+    lastTime =
+        performance.now();
+
+    fpsTime =
+        lastTime;
+
+
+    requestAnimationFrame(
+        loop
+    );
+}
+
+
+main().catch(
+    error => {
+
+        console.error(
+            error
+        );
+
+
+        if (infoElement) {
+
+            infoElement.textContent =
+                `WebGPU Error: ${error.message}`;
+        }
+    }
+);
+    </script>
+    
+</body>
+
+</html>
